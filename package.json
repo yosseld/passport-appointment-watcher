@@ -1,6 +1,6 @@
 {
   "name": "passport-watcher",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Watches the U.S. passport agency appointment system and alarms the instant a real, bookable slot opens for your own urgent-travel appointment.",
   "main": "watcher.js",
   "bin": {

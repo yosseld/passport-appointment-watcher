@@ -195,36 +195,49 @@ async function pickAgencyUI(page) {
   return await page.evaluate(() => window.__picked);
 }
 
-// ---- Alarms (Windows: PowerShell SAPI speech + console beeps) --------------
-function psFireAndForget(command) {
-  try {
-    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { stdio: 'ignore' });
-    p.on('error', () => {});
-    p.unref();
-  } catch (_) { /* ignore */ }
+// ---- Alarms (Windows: PowerShell speech; macOS: `say`; Linux: bell/spd-say) ----
+function spawnDetached(cmd, args) {
+  try { const p = spawn(cmd, args, { stdio: 'ignore' }); p.on('error', () => {}); p.unref(); } catch (_) { /* ignore */ }
+}
+
+let _audioWarned = false;
+function warnAudioOnce() {
+  if (_audioWarned) return;
+  _audioWarned = true;
+  log('NOTE: local audio alarm is best-effort on this OS — rely on the ntfy phone push.');
+}
+
+function winSpeak(phrase, tail) {
+  const esc = phrase.replace(/'/g, "''");
+  spawnDetached('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    `$ErrorActionPreference='SilentlyContinue';Add-Type -AssemblyName System.Speech;` +
+    `$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;$s.Volume=100;$s.Rate=1;` + tail(esc)]);
 }
 
 function alarmAvailable() {
-  const phrase = `Passport appointment available in ${AGENCY}. Book now. Book now.`.replace(/'/g, "''");
-  psFireAndForget(
-    `$ErrorActionPreference='SilentlyContinue';` +
-    `Add-Type -AssemblyName System.Speech;` +
-    `$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = 100; $s.Rate = 1;` +
-    `for ($i = 0; $i -lt 4; $i++) {` +
-    `  [console]::beep(1245, 220); [console]::beep(1660, 220); [console]::beep(1245, 220); [console]::beep(1975, 350);` +
-    `  $s.Speak('${phrase}');` +
-    `}`
-  );
+  const phrase = `Passport appointment available in ${AGENCY}. Book now. Book now.`;
+  if (process.platform === 'win32') {
+    winSpeak(phrase, (esc) => `for($i=0;$i -lt 4;$i++){[console]::beep(1245,220);[console]::beep(1660,220);[console]::beep(1245,220);[console]::beep(1975,350);$s.Speak('${esc}')}`);
+  } else if (process.platform === 'darwin') {
+    spawnDetached('osascript', ['-e', 'beep 3']);
+    spawnDetached('say', ['-r', '230', phrase]);
+  } else {
+    spawnDetached('sh', ['-c', `printf '\\a\\a\\a'; command -v spd-say >/dev/null 2>&1 && spd-say "${phrase.replace(/"/g, '')}" || true`]);
+    warnAudioOnce();
+  }
 }
 
 function alarmExpired() {
-  const phrase = `Passport watcher session expired. Please redo travel plans.`.replace(/'/g, "''");
-  psFireAndForget(
-    `$ErrorActionPreference='SilentlyContinue';` +
-    `Add-Type -AssemblyName System.Speech;` +
-    `$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = 100; $s.Rate = 1;` +
-    `[console]::beep(700, 250); [console]::beep(500, 400); $s.Speak('${phrase}');`
-  );
+  const phrase = `Passport watcher session dropped. Please redo travel plans.`;
+  if (process.platform === 'win32') {
+    winSpeak(phrase, () => `[console]::beep(700,250);[console]::beep(500,400);$s.Speak('${phrase.replace(/'/g, "''")}')`);
+  } else if (process.platform === 'darwin') {
+    spawnDetached('osascript', ['-e', 'beep 2']);
+    spawnDetached('say', [phrase]);
+  } else {
+    spawnDetached('sh', ['-c', "printf '\\a\\a'"]);
+    warnAudioOnce();
+  }
 }
 
 // ntfy puts title/tags in HTTP headers, which must be Latin-1 (ByteString). An
@@ -263,12 +276,11 @@ async function whereAreWe(page) {
   // sensitively / by URL to avoid the step-bar.
   const onDateTime = /dateandtime/.test(u) || /Select an Appointment Window/.test(t);
   const onFindAgency = /findagency/.test(u);
-  // NB: we deliberately do NOT classify "booking"/"expired"/"confirmed" by
-  // URL/keyword — Step 1 (Travel Plans) and Step 4/5 all live under
-  // /appointment/new/ and share step-bar text, so any such guess mislabels normal
-  // navigation (we burned a false "expired" AND a false "confirmed" doing this).
-  // Everything that isn't one of the two watch pages is a single quiet off-target state.
-  return { url, onDateTime, onFindAgency };
+  // inFlow: still inside the appointment wizard but not on a watch page. Once
+  // establishedOnce is set you're past Step 1, so this is almost always a Step 4/5
+  // booking page — we use it to stay quiet (never cry "expired") while you book.
+  const inFlow = /\/appointment\/new\//.test(u);
+  return { url, onDateTime, onFindAgency, inFlow };
 }
 
 // Step 3 detector: any day column not saying "no appointments available", or a
@@ -280,12 +292,17 @@ async function detectDateTime(page) {
       const noCount = (t.match(/There are no appointments available/g) || []).length;
       const dayCount = (t.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\w{3}\s+\d{1,2}\b/g) || []).length;
       const clockSlots = (t.match(/\b\d{1,2}:\d{2}\s*(AM|PM)\b/g) || []).length;
-      // Half-day windows render as standalone "AM"/"PM" buttons (e.g. Atlanta "AM >").
-      const windowSlots = [...document.querySelectorAll('a,button')]
-        .filter((b) => /^(AM|PM)\b/i.test((b.textContent || '').trim())).length;
+      // Half-day windows render as standalone ENABLED "AM"/"PM" buttons (e.g. Atlanta
+      // "AM >"). Require enabled + short text so filter chips / legends never count.
+      const windowSlots = [...document.querySelectorAll('a,button')].filter((b) => {
+        const tx = (b.textContent || '').trim();
+        return /^(AM|PM)\b/i.test(tx) && tx.length <= 12 && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+      }).length;
       const slotCount = clockSlots + windowSlots;
       const onDateTime = /Select an Appointment Window/.test(t);
-      const available = onDateTime && dayCount > 0 && (noCount < dayCount || slotCount > 0);
+      // A positive slot signal (a real clock time or AM/PM window) is enough on its own:
+      // if the day-header format ever drifts (dayCount -> 0) we must still alarm.
+      const available = onDateTime && (slotCount > 0 || (dayCount > 0 && noCount < dayCount));
       return { onDateTime, noCount, dayCount, slotCount, available };
     });
   } catch (_) { return { onDateTime: false, noCount: 0, dayCount: 0, slotCount: 0, available: false }; }
@@ -297,8 +314,9 @@ async function detectAgency(page, agencyName) {
   try {
     return await page.evaluate((name) => {
       const findBlock = (nm) => {
+        const needle = String(nm).toLowerCase();
         const els = [...document.querySelectorAll('li, div, .card, .agency, section')]
-          .filter((el) => new RegExp(nm, 'i').test(el.textContent) && /Passport Agency/i.test(el.textContent));
+          .filter((el) => (el.textContent || '').toLowerCase().includes(needle) && /Passport Agency/i.test(el.textContent));
         let block = null, best = Infinity;
         for (const el of els) { const L = (el.textContent || '').length; if (L < best) { best = L; block = el; } }
         return block;
@@ -325,6 +343,8 @@ async function searchAgencies(page, zip) {
       else { await box.press('Enter').catch(() => {}); }
       await page.waitForFunction(() => /Passport Agency/i.test(document.body ? document.body.innerText : ''), { timeout: 9000 }).catch(() => {});
       await sleep(600);
+    } else {
+      log('search box (#SearchCriteria) not found — portal markup may have changed (or page still loading).');
     }
   } catch (_) { /* ignore */ }
 }
@@ -356,8 +376,9 @@ async function clickAgencySelect(page, agencyName) {
   try {
     return await page.evaluate((name) => {
       const findBlock = (nm) => {
+        const needle = String(nm).toLowerCase();
         const els = [...document.querySelectorAll('li, div, .card, .agency, section')]
-          .filter((el) => new RegExp(nm, 'i').test(el.textContent) && /Passport Agency/i.test(el.textContent));
+          .filter((el) => (el.textContent || '').toLowerCase().includes(needle) && /Passport Agency/i.test(el.textContent));
         let block = null, best = Infinity;
         for (const el of els) { const L = (el.textContent || '').length; if (L < best) { best = L; block = el; } }
         return block;
@@ -472,6 +493,7 @@ async function main() {
     console.log('where:', JSON.stringify(w));
     if (w.onFindAgency) { await searchAgencies(page, SEARCH_ZIP); console.log('agency:', JSON.stringify(await detectAgency(page, AGENCY))); }
     if (w.onDateTime) { console.log('datetime:', JSON.stringify(await detectDateTime(page))); }
+    await context.close().catch(() => {});
     return;
   }
 
@@ -508,14 +530,11 @@ async function main() {
       saveSession(w.url);
       const d = await detectDateTime(page);
       if (d.available) {
-        // Double-check ~1.5s later to rule out a transient half-rendered read.
-        await sleep(1500);
-        const d2 = await detectDateTime(page);
-        if (d2.available) {
-          await onAvailable(page, `REAL OPEN SLOT at ${AGENCY}! (days=${d2.dayCount}, empty=${d2.noCount}, windows=${d2.slotCount})`, `Pick the open window and click Next.`);
-          continue;
-        }
-        log(`${AGENCY}: availability flickered (partial render) — ignoring, re-checking.`);
+        // Alarm immediately — a real slot can vanish in well under a second, and the
+        // page was already settled (settleDateTime runs after each reload). A rare
+        // half-render false positive self-clears within ~4s in onAvailable's recheck.
+        await onAvailable(page, `REAL OPEN SLOT at ${AGENCY}! (days=${d.dayCount}, empty=${d.noCount}, windows=${d.slotCount})`, `Pick the open window and click Next.`);
+        continue;
       }
       const wait = calJitter();
       log(`${AGENCY} calendar: no real slots (days=${d.dayCount}, empty=${d.noCount}). Reloading in ${Math.round(wait / 1000)}s.`);
@@ -525,23 +544,28 @@ async function main() {
       continue;
     }
 
-    // --- Anywhere else: Step 1 setup, booking steps, home, expired --------
-    // Single QUIET off-target state. No siren — Step 1 and the Step 4/5 booking
-    // pages both land here, and mistaking either for "expired" is the bug we hit.
+    // --- Step 1 setup (before we've ever reached a watch page) ------------
     if (!establishedOnce) {
       log('Waiting for you to reach "Find an Agency" (complete Step 1 Travel Plans in the Chrome window)...');
       await sleep(6000);
       continue;
     }
-    // Was watching, now off the watch page (you're booking, or the session
-    // dropped). Log softly; only after a sustained absence send ONE gentle nudge.
+    // --- Past the watch pages but STILL in the appointment flow: you're booking
+    //     (Step 4/5). Stay quiet — never cry "expired" mid-booking. ----------
+    if (w.inFlow) {
+      offTargetSince = null; offNudged = false;
+      log(`Looks like you're booking (past the calendar) — alarms paused. I'll resume watching ${AGENCY} if you return to the agency list.`);
+      await sleep(8000);
+      continue;
+    }
+    // --- Left the flow entirely (home/error): the session likely dropped. ---
     if (offTargetSince === null) offTargetSince = Date.now();
     const offSec = Math.round((Date.now() - offTargetSince) / 1000);
-    log(`Not on the agency-list / date-time page (you're booking, or the session dropped) — return to the agency list to resume watching ${AGENCY}. (${offSec}s)`);
-    if (!offNudged && (Date.now() - offTargetSince) > 90000) {
+    log(`Not in the appointment flow — session may have dropped. Redo Step 1 to resume watching ${AGENCY}. (${offSec}s)`);
+    if (!offNudged && (Date.now() - offTargetSince) > 60000) {
       offNudged = true;
       alarmExpired();
-      await pushPhone(`Passport watcher idle (${AGENCY})`, 'Off the watch page 90s+. If you are not booking, redo Step 1 to resume.', 'default', 'warning');
+      await pushPhone(`Passport watcher: session dropped (${AGENCY})`, 'The session looks ended. Redo Step 1 to resume monitoring.', 'default', 'warning');
     }
     await sleep(8000);
   }
