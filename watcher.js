@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * passport-watcher
+ * Passport Appointment Watcher
  * ----------------
  * Watches the U.S. Dept of State Online Passport Appointment System
  * (passportappointment.travel.state.gov) for an opening at a given passport
@@ -50,7 +50,7 @@ const { chromium } = require('playwright-core');
 
 // Persistent data dir (config, browser profile, saved session). Stable across runs
 // whether launched as a script OR a packaged .exe (so __dirname/temp don't matter).
-const DATA_DIR = process.env.PASSPORT_WATCHER_DIR || path.join(os.homedir(), '.passport-watcher');
+const DATA_DIR = process.env.PASSPORT_WATCHER_DIR || path.join(os.homedir(), '.passport-appointment-watcher');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const PROFILE_DIR = process.env.PROFILE_DIR || path.join(DATA_DIR, 'chrome-profile');
@@ -159,7 +159,7 @@ const AGENCIES = [
 function buildConfigHtml() {
   const opts = AGENCIES.map((a, i) => `<option value="${i}"${a.name === AGENCY ? ' selected' : ''}>${a.label} — ${a.name} Passport Agency</option>`).join('');
   const defZip = (AGENCIES.find((a) => a.name === AGENCY) || {}).zip || SEARCH_ZIP;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>passport-watcher setup</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Passport Appointment Watcher setup</title><style>
   body{font-family:'Segoe UI',Arial,sans-serif;background:#0b2545;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
   .card{background:#13315c;padding:34px 38px;border-radius:14px;max-width:520px;box-shadow:0 12px 44px rgba(0,0,0,.45)}
   h1{margin:0 0 6px;font-size:23px} p{color:#cfe0ff;font-size:14px;line-height:1.5}
@@ -168,7 +168,7 @@ function buildConfigHtml() {
   button{margin-top:24px;width:100%;padding:14px;border:0;border-radius:8px;background:#e63946;color:#fff;font-size:17px;font-weight:700;cursor:pointer}
   button:hover{background:#d62839} .hint{font-size:12px;color:#9bb8e6;margin-top:8px}
 </style></head><body><div class="card">
-  <h1>&#128499; passport-watcher</h1>
+  <h1>&#128499; Passport Appointment Watcher</h1>
   <p>Pick the passport agency you want to watch. You'll be alerted the instant a real, bookable slot opens.</p>
   <label for="agency">Passport agency</label>
   <select id="agency">${opts}</select>
@@ -456,7 +456,7 @@ async function main() {
   ensureConfig(); // mint the private phone-alert topic now that the agency is known
 
   console.log('========================================================');
-  console.log(`  passport-watcher  -  target: ${AGENCY} Passport Agency`);
+  console.log(`  Passport Appointment Watcher  -  target: ${AGENCY} Passport Agency`);
   console.log(`  search zip: ${SEARCH_ZIP}    calendar reload: ${Math.round(CAL_MIN_MS / 1000)}-${Math.round(CAL_MAX_MS / 1000)}s`);
   console.log(`  config file: ${CONFIG_FILE}`);
   console.log('  PHONE ALERTS -> subscribe to this in the free "ntfy" phone app:');

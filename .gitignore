@@ -11,6 +11,7 @@ config.json
 
 # build output
 build/
+passport-appointment-watcher.exe
 passport-watcher.exe
 *.log
 *.tmp

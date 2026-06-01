@@ -1,4 +1,4 @@
-# passport-watcher
+# Passport Appointment Watcher
 
 Watches the U.S. Department of State **Online Passport Appointment System**
 (`passportappointment.travel.state.gov`) and **alarms the instant a real,
@@ -20,8 +20,8 @@ and vanish in seconds; this watches so you don't have to.
 
 ## Quick start
 
-**Easiest (no tech setup):** download **`passport-watcher.exe`** from the
-[Releases page](https://github.com/yosseld/passport-watcher/releases) and double‑click it. Skip to *First run* below.
+**Easiest (no tech setup):** download **`passport-appointment-watcher.exe`** from the
+[Releases page](https://github.com/yosseld/passport-appointment-watcher/releases) and double‑click it. Skip to *First run* below.
 
 **From source (if you prefer):**
 1. Install [Node.js](https://nodejs.org/) (LTS) — or just run `setup.cmd`, which installs it for you.
@@ -45,7 +45,7 @@ Stop anytime by closing the window or pressing **Ctrl+C**.
 ## Switch agencies
 
 Re‑open the picker: double‑click **`configure.cmd`** (or run
-`passport-watcher.exe --configure`), choose a different agency, and click Start.
+`passport-appointment-watcher.exe --configure`), choose a different agency, and click Start.
 _(Advanced: you can also edit `agency` / `searchZip` directly in the config file
 whose path is printed at startup.)_
 
@@ -86,7 +86,7 @@ Test the alarm anytime: `node watcher.js --test` (or `test-alarm.cmd`).
 ## Build the .exe yourself
 
 With Node.js installed, double‑click **`build.cmd`** (or run `npm install && npm run build`).
-It produces `passport-watcher.exe` (~40 MB) bundling Node + dependencies — recipients only
+It produces `passport-appointment-watcher.exe` (~40 MB) bundling Node + dependencies — recipients only
 need Chrome or Edge. Distribute it via your repo's **Releases**, not committed in the repo.
 
 ## License

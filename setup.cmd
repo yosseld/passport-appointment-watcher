@@ -1,5 +1,5 @@
 @echo off
-REM One-time setup for passport-watcher (no tech knowledge needed).
+REM One-time setup for Passport Appointment Watcher (no tech knowledge needed).
 cd /d "%~dp0"
 
 where node >nul 2>nul
@@ -15,7 +15,7 @@ if errorlevel 1 (
   exit /b
 )
 
-echo Installing the watcher's dependencies...
+echo Installing dependencies...
 call npm install
 echo.
 echo ============================================================
