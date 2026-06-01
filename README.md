@@ -30,33 +30,24 @@ and vanish in seconds; this watches so you don't have to.
 
 ## First run
 
-1. A window prints a **PHONE ALERTS** link like `https://ntfy.sh/passport-miami-ab12cd34`.
+1. A **setup window** opens in the browser — **pick your passport agency** from
+   the dropdown and click **Start watching** (the zip is filled in for you).
+2. The console prints a **PHONE ALERTS** link like `https://ntfy.sh/passport-...`.
    Open the **ntfy** app on your phone, tap **+**, and subscribe to that exact
-   topic. (It's private as long as you don't share the link.)
-2. A browser window opens. **Complete Step 1 (Travel Plans)** in it until you
-   reach the **"Find an Agency"** page, then leave the window open.
-3. That's it — it now searches your zip, watches your agency, and **screams +
-   pushes your phone** the moment a *real* slot opens. Pick the open window →
-   **Next** → finish booking.
+   topic. (Private unless you share the link.)
+3. **Complete Step 1 (Travel Plans)** in the browser until you reach the
+   **"Find an Agency"** page, then leave the window open.
+4. Done — it watches your agency and **screams + pushes your phone** the moment a
+   *real* slot opens. Pick the open window → **Next** → finish booking.
 
 Stop anytime by closing the window or pressing **Ctrl+C**.
 
-## Watch a different city
+## Switch agencies
 
-Open the **config file** (its path is printed at startup — by default
-`C:\Users\<you>\.passport-watcher\config.json`) and change:
-
-```json
-{
-  "agency": "Houston",
-  "searchZip": "77002",
-  "ntfyTopic": ""
-}
-```
-
-Use the agency name exactly as it appears on
-[travel.state.gov's agency list](https://travel.state.gov/content/travel/en/passports/get-fast/passport-agencies.html),
-and a zip near it. Leave `ntfyTopic` blank and a new private one is generated for you.
+Re‑open the picker: double‑click **`configure.cmd`** (or run
+`passport-watcher.exe --configure`), choose a different agency, and click Start.
+_(Advanced: you can also edit `agency` / `searchZip` directly in the config file
+whose path is printed at startup.)_
 
 ## How it works (the short version)
 

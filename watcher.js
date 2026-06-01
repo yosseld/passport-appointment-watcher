@@ -75,6 +75,7 @@ const NTFY_SERVER = (process.env.NTFY_SERVER || CFG.ntfyServer || 'https://ntfy.
 
 const TEST = process.argv.includes('--test');
 const ONCE = process.argv.includes('--once');
+const CONFIGURE = process.argv.includes('--configure');
 
 function intEnv(name, def) { const v = parseInt(process.env[name], 10); return Number.isFinite(v) ? v : def; }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -122,6 +123,76 @@ async function launchPersistent() {
     } catch (e) { lastErr = e; console.log(`  ${channel} not available — trying next...`); }
   }
   throw new Error('Could not launch Chrome or Edge. Please install Google Chrome. ' + (lastErr ? String(lastErr.message).split('\n')[0] : ''));
+}
+
+// U.S. passport agencies that take in-person urgent-travel appointments. `name`
+// is the token matched in the agency list; `zip` surfaces that agency in search.
+const AGENCIES = [
+  { name: 'Atlanta', label: 'Atlanta, GA', zip: '30303' },
+  { name: 'Boston', label: 'Boston, MA', zip: '02222' },
+  { name: 'Buffalo', label: 'Buffalo, NY', zip: '14202' },
+  { name: 'Charleston', label: 'Charleston, SC', zip: '29405' },
+  { name: 'Chicago', label: 'Chicago, IL', zip: '60604' },
+  { name: 'Colorado', label: 'Denver / Centennial, CO', zip: '80112' },
+  { name: 'Connecticut', label: 'Stamford, CT', zip: '06901' },
+  { name: 'Dallas', label: 'Dallas, TX', zip: '75242' },
+  { name: 'Detroit', label: 'Detroit, MI', zip: '48226' },
+  { name: 'El Paso', label: 'El Paso, TX', zip: '79901' },
+  { name: 'Honolulu', label: 'Honolulu, HI', zip: '96850' },
+  { name: 'Houston', label: 'Houston, TX', zip: '77002' },
+  { name: 'Los Angeles', label: 'Los Angeles, CA', zip: '90024' },
+  { name: 'Miami', label: 'Miami, FL', zip: '33130' },
+  { name: 'Minneapolis', label: 'Minneapolis, MN', zip: '55401' },
+  { name: 'New Orleans', label: 'New Orleans, LA', zip: '70130' },
+  { name: 'New York', label: 'New York, NY', zip: '10014' },
+  { name: 'Philadelphia', label: 'Philadelphia, PA', zip: '19106' },
+  { name: 'San Diego', label: 'San Diego, CA', zip: '92101' },
+  { name: 'San Francisco', label: 'San Francisco, CA', zip: '94105' },
+  { name: 'San Juan', label: 'San Juan, PR', zip: '00918' },
+  { name: 'Seattle', label: 'Seattle, WA', zip: '98174' },
+  { name: 'Vermont', label: 'St. Albans, VT', zip: '05478' },
+  { name: 'Washington', label: 'Washington, DC', zip: '20037' },
+  { name: 'Western', label: 'Tucson, AZ', zip: '85701' },
+];
+
+// Build the first-run picker page (a styled agency dropdown + Start button).
+function buildConfigHtml() {
+  const opts = AGENCIES.map((a, i) => `<option value="${i}"${a.name === AGENCY ? ' selected' : ''}>${a.label} — ${a.name} Passport Agency</option>`).join('');
+  const defZip = (AGENCIES.find((a) => a.name === AGENCY) || {}).zip || SEARCH_ZIP;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>passport-watcher setup</title><style>
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#0b2545;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+  .card{background:#13315c;padding:34px 38px;border-radius:14px;max-width:520px;box-shadow:0 12px 44px rgba(0,0,0,.45)}
+  h1{margin:0 0 6px;font-size:23px} p{color:#cfe0ff;font-size:14px;line-height:1.5}
+  label{display:block;margin:18px 0 6px;font-weight:600}
+  select,input{width:100%;padding:11px;border-radius:8px;border:1px solid #2b4a7a;background:#fff;color:#0b2545;font-size:16px;box-sizing:border-box}
+  button{margin-top:24px;width:100%;padding:14px;border:0;border-radius:8px;background:#e63946;color:#fff;font-size:17px;font-weight:700;cursor:pointer}
+  button:hover{background:#d62839} .hint{font-size:12px;color:#9bb8e6;margin-top:8px}
+</style></head><body><div class="card">
+  <h1>&#128499; passport-watcher</h1>
+  <p>Pick the passport agency you want to watch. You'll be alerted the instant a real, bookable slot opens.</p>
+  <label for="agency">Passport agency</label>
+  <select id="agency">${opts}</select>
+  <label for="zip">Zip to search <span class="hint">(prefilled &mdash; only change if your agency doesn't show up)</span></label>
+  <input id="zip" value="${defZip}">
+  <button id="start">Start watching</button>
+  <p class="hint">Don't see your agency, or it never becomes selectable? It may not offer in-person urgent-travel appointments.</p>
+</div><script>
+  var AG=${JSON.stringify(AGENCIES)},sel=document.getElementById('agency'),zip=document.getElementById('zip');
+  sel.addEventListener('change',function(){zip.value=AG[sel.value].zip;});
+  document.getElementById('start').addEventListener('click',function(){
+    var a=AG[sel.value];window.__picked={agency:a.name,zip:(zip.value||a.zip).trim()};
+    document.body.innerHTML='<div class="card"><h1>Starting&hellip;</h1><p>Watching <b>'+a.name+' Passport Agency</b>. Do Step 1 (Travel Plans) now.</p></div>';
+  });
+</script></body></html>`;
+}
+
+// Show the picker in the browser window and wait for the user to choose.
+async function pickAgencyUI(page) {
+  await page.setContent(buildConfigHtml(), { waitUntil: 'domcontentloaded' });
+  await page.bringToFront().catch(() => {});
+  console.log('  >>> Pick your agency in the window, then click "Start watching".');
+  await page.waitForFunction('window.__picked', { timeout: 0 });
+  return await page.evaluate(() => window.__picked);
 }
 
 // ---- Alarms (Windows: PowerShell SAPI speech + console beeps) --------------
@@ -325,8 +396,8 @@ async function onAvailable(page, headline, instruction) {
 
 // ---- Main ------------------------------------------------------------------
 async function main() {
-  ensureConfig();
   if (TEST) {
+    ensureConfig();
     console.log('Firing test alarm (you should HEAR a siren + spoken alert)...');
     alarmAvailable();
     await pushPhone(`TEST - passport watcher (${AGENCY})`, 'Test push. If you see this on your phone, alerts work.', 'high');
@@ -335,6 +406,34 @@ async function main() {
     return;
   }
 
+  const context = await launchPersistent();
+  // A reused profile can restore old tabs; keep one clean page, close the rest.
+  const existing = context.pages();
+  const page = existing[0] || (await context.newPage());
+  for (const p of existing.slice(1)) { await p.close().catch(() => {}); }
+
+  let closed = false;
+  context.on('close', () => { closed = true; });
+  process.on('SIGINT', async () => {
+    console.log('\nStopping watcher.');
+    try { await context.close(); } catch (_) {}
+    process.exit(0);
+  });
+
+  // First run (no saved agency) or --configure: show the graphical agency picker.
+  if (CFG.agency === undefined || CONFIGURE) {
+    try {
+      const picked = await pickAgencyUI(page);
+      if (picked && picked.agency) {
+        AGENCY = picked.agency;
+        SEARCH_ZIP = picked.zip || SEARCH_ZIP;
+        CFG.agency = AGENCY; CFG.searchZip = SEARCH_ZIP; saveConfig();
+        if (CONFIGURE) { try { fs.unlinkSync(SESSION_FILE); } catch (_) {} } // re-pick -> fresh session
+      }
+    } catch (e) { console.log('  picker skipped (' + (e && e.message ? e.message : e) + ') — using ' + AGENCY); }
+  }
+  ensureConfig(); // mint the private phone-alert topic now that the agency is known
+
   console.log('========================================================');
   console.log(`  passport-watcher  -  target: ${AGENCY} Passport Agency`);
   console.log(`  search zip: ${SEARCH_ZIP}    calendar reload: ${Math.round(CAL_MIN_MS / 1000)}-${Math.round(CAL_MAX_MS / 1000)}s`);
@@ -342,13 +441,8 @@ async function main() {
   console.log('  PHONE ALERTS -> subscribe to this in the free "ntfy" phone app:');
   console.log(`     ${NTFY_SERVER}/${NTFY_TOPIC}`);
   console.log('========================================================');
-  console.log('  (Watch a different city? Edit "agency" + "searchZip" in the config file above.)');
+  console.log('  (Change agency anytime: run with --configure, or double-click configure.cmd)');
 
-  const context = await launchPersistent();
-  // A reused profile can restore old tabs; keep one clean page, close the rest.
-  const existing = context.pages();
-  const page = existing[0] || (await context.newPage());
-  for (const p of existing.slice(1)) { await p.close().catch(() => {}); }
   // Try to RESUME the prior session so you don't redo Step 1. The persistent profile
   // keeps your cookie; if the saved flow URL still loads a flow page, we pick up
   // exactly where we left off. Otherwise fall back to the home page.
@@ -365,14 +459,6 @@ async function main() {
     }
   } catch (_) {}
   if (!resumed) { await page.goto(START_URL, { waitUntil: 'domcontentloaded' }).catch(() => {}); }
-
-  let closed = false;
-  context.on('close', () => { closed = true; });
-  process.on('SIGINT', async () => {
-    console.log('\nStopping watcher.');
-    try { await context.close(); } catch (_) {}
-    process.exit(0);
-  });
 
   await settle(page);
 
@@ -461,4 +547,7 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error('Fatal:', e); process.exit(1); });
+if (require.main === module) {
+  main().catch((e) => { console.error('Fatal:', e); process.exit(1); });
+}
+module.exports = { AGENCIES, buildConfigHtml, pickAgencyUI };

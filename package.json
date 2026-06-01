@@ -1,6 +1,6 @@
 {
   "name": "passport-watcher",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Watches the U.S. passport agency appointment system and alarms the instant a real, bookable slot opens for your own urgent-travel appointment.",
   "main": "watcher.js",
   "bin": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node watcher.js",
     "test-alarm": "node watcher.js --test",
-    "build": "caxa --input . --output passport-watcher.exe --exclude .git -- \"{{caxa}}/node_modules/.bin/node\" \"{{caxa}}/watcher.js\""
+    "build": "caxa --input . --output passport-watcher.exe --exclude .git passport-watcher.exe build -- \"{{caxa}}/node_modules/.bin/node\" \"{{caxa}}/watcher.js\""
   },
   "keywords": [
     "passport",
