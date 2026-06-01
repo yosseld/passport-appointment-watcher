@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# local runtime state (per-user; never share these)
+.chrome-profile/
+chrome-profile/
+.session-url
+session-url.txt
+.ntfy-topic
+config.json
+
+# build output
+build/
+passport-watcher.exe
+*.log
+*.tmp
